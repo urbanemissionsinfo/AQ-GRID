@@ -1,3 +1,5 @@
+let lastResult = null;
+
 (function(){
   // ---------- ambient dust decoration ----------
   const dustEl = document.getElementById('dust');
@@ -37,6 +39,8 @@
   const statsEl = document.getElementById('stats');
   const stage = document.getElementById('stage');
   const tooltip = document.getElementById('tooltip');
+  const downloadSection = document.getElementById('downloadSection');
+  const downloadBtn = document.getElementById('downloadBtn');
 
   // ---------- CSV upload wiring ----------
   dropzone.addEventListener('click', ()=>fileInput.click());
@@ -65,6 +69,8 @@
         csvError.innerHTML = '<div class="error-msg">'+err.message+'</div>';
         csvRows = null;
         sourceSection.style.display = 'none';
+        downloadSection.style.display = 'none';
+        lastResult = null;
         checkReady();
       }
     };
@@ -82,6 +88,8 @@
       csvRows = null; sourceNames = []; fileName='';
       fileChipHolder.innerHTML = '';
       sourceSection.style.display = 'none';
+      downloadSection.style.display = 'none';
+      lastResult = null;
       checkReady();
     };
     chip.appendChild(btn);
@@ -193,12 +201,44 @@
   generateBtn.addEventListener('click', () => {
     try{
       const result = computeGrid();
+      lastResult = result;
       renderHeatmap(result);
       renderStats(result);
+      downloadSection.style.display = 'block';
     }catch(err){
       csvError.innerHTML = '<div class="error-msg">'+err.message+'</div>';
+      downloadSection.style.display = 'none';
     }
   });
+
+  downloadBtn.addEventListener('click', downloadCSV);
+
+  function downloadCSV(){
+    if(!lastResult || !csvRows) return;
+
+    const header = ['ncol', 'nrow', ...sourceNames, 'emission'];
+    const lines = [header.join(',')];
+
+    csvRows.forEach(r => {
+      const key = Math.round(r.ncol)+'_'+Math.round(r.nrow);
+      const emission = lastResult.emissionByKey.get(key);
+      const emissionStr = emission === undefined ? '' : emission;
+      const rowVals = [r.ncol, r.nrow, ...sourceNames.map(n => r[n]), emissionStr];
+      lines.push(rowVals.join(','));
+    });
+
+    const csvContent = lines.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const baseName = fileName ? fileName.replace(/\.csv$/i, '') : 'grid';
+    a.download = baseName + '_with_emissions.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   function computeGrid(){
     const totalEmissions = parseFloat(totalEmissionsInput.value);
@@ -214,6 +254,7 @@
     ncolMax = Math.round(ncolMax); nrowMax = Math.round(nrowMax);
 
     const map = new Map();
+    const emissionByKey = new Map();
     csvRows.forEach(r=>{
       let emission = 0;
       const norm = {};
@@ -223,7 +264,9 @@
         emission += nv * contributions[n];
       });
       emission *= totalEmissions;
-      map.set(Math.round(r.ncol)+'_'+Math.round(r.nrow), { emission, norm, raw:r });
+      const key = Math.round(r.ncol)+'_'+Math.round(r.nrow);
+      map.set(key, { emission, norm, raw:r });
+      emissionByKey.set(key, emission);
     });
 
     // Reordered mapping: 
@@ -252,19 +295,18 @@
     }
     
     if(min===Infinity){ min=0; max=0; }
-    return { grid, ncolMax, nrowMax, min, max, sumEm, filled, totalEmissions, maxCell, contributions };
+    return { grid, ncolMax, nrowMax, min, max, sumEm, filled, totalEmissions, maxCell, contributions, emissionByKey };
   }
 
-  const RAMP = [
-    [0.00,[0x14,0x13,0x11]],
-    [0.15,[0x3B,0x14,0x0F]],
-    [0.35,[0x7A,0x1E,0x12]],
-    [0.55,[0xC2,0x4C,0x1B]],
-    [0.75,[0xE8,0xA3,0x3D]],
-    [0.90,[0xF4,0xD9,0x7A]],
-    [1.00,[0xFB,0xF3,0xD8]]
-  ];
-  
+const RAMP = [
+  [0.00, [0x13, 0x2B, 0x12]], // Low emissions (Dark Green)
+  [0.20, [0x2E, 0x6F, 0x28]], // Low-Mid (Green)
+  [0.40, [0x6D, 0xB3, 0x3F]], // Mid (Yellow-Green)
+  [0.60, [0xE5, 0xC1, 0x38]], // Mid-High (Yellow)
+  [0.80, [0xE6, 0x7E, 0x22]], // High (Orange)
+  [1.00, [0xD9, 0x38, 0x29]]  // Peak emissions (Red)
+];
+
   function rampColor(t){
     t = Math.max(0, Math.min(1, t));
     for(let i=0;i<RAMP.length-1;i++){
@@ -284,6 +326,17 @@
 
   function renderHeatmap(result){
     const { grid, ncolMax, nrowMax, min, max } = result;
+    // Measure available stage space minus axis padding
+    const availWidth = stage.clientWidth ? (stage.clientWidth - 100) : 700;
+    const availHeight = stage.clientHeight ? (stage.clientHeight - 160) : 600;
+    const targetGridDim = Math.max(320, Math.min(availWidth, availHeight));
+    const stageRect = stage.getBoundingClientRect();
+    // Reserve pixels for Y/X axis labels and legend bar
+    const reservedWidth = 64; 
+    const reservedHeight = 110;
+    const availW = Math.max(50, stageRect.width - reservedWidth);
+    const availH = Math.max(50, stageRect.height - reservedHeight); 
+
     cellDataFlat = [];
 
     const wrap = document.createElement('div');
@@ -303,7 +356,7 @@
     yAxis.style.flexDirection = 'column';
     yAxis.style.justifyContent = 'space-between';
     yAxis.style.alignItems = 'flex-end';
-    yAxis.style.color = 'rgba(255,255,255,0.4)';
+    yAxis.style.color = 'var(--ink-soft)';
     yAxis.style.fontSize = '12px';
     yAxis.style.paddingRight = '4px';
     yAxis.innerHTML = '<span>'+nrowMax+'</span><span style="writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 2px;">nrow</span><span>1</span>';
@@ -312,7 +365,7 @@
     const xAxis = document.createElement('div');
     xAxis.style.display = 'flex';
     xAxis.style.justifyContent = 'space-between';
-    xAxis.style.color = 'rgba(255,255,255,0.4)';
+    xAxis.style.color = 'var(--ink-soft)';
     xAxis.style.fontSize = '12px';
     xAxis.style.paddingTop = '4px';
     xAxis.style.gridColumn = '2';
@@ -322,10 +375,13 @@
     frame.className = 'grid-frame';
     const gridEl = document.createElement('div');
     gridEl.id = 'gridCanvasWrap';
-    const cellPx = Math.max(3, Math.min(11, Math.floor(560/Math.max(ncolMax,nrowMax))));
+
+    // Constrain cell size so both width and height fit completely inside stage
+    const cellW = availW / ncolMax;
+    const cellH = availH / nrowMax;
+    const cellPx = Math.max(3, Math.floor(targetGridDim / Math.max(ncolMax, nrowMax)));
     gridEl.style.gridTemplateColumns = 'repeat('+ncolMax+', '+cellPx+'px)';
     gridEl.style.gridTemplateRows = 'repeat('+nrowMax+', '+cellPx+'px)';
-
     let idx = 0;
     for(let i=0;i<nrowMax;i++){
       for(let j=0;j<ncolMax;j++){
@@ -354,8 +410,8 @@
     legend.className = 'legend';
     legend.innerHTML =
       '<div class="legend-bar"></div>'+
-      '<div class="legend-labels"><span>'+fmt(min)+'</span><span>'+fmt((min+max)/2)+'</span><span>'+fmt(max)+'</span></div>'+
-      '<div class="legend-cap">emissions per cell (tonnes) — colour scaled √ for visibility</div>';
+      '<div class="legend-labels"><span>'+fmt(min)+'</span><span>'+fmt(Math.round((min + max) / 2))+'</span><span>'+fmt(Math.round((max)))+'</span></div>'+
+      '<div class="legend-cap">emissions per cell — colour scaled √ for visibility</div>';
     wrap.appendChild(legend);
 
     stage.innerHTML = '';
@@ -391,7 +447,7 @@
                     '<span class="tt-src-name" style="text-transform:capitalize;">'+n.replace(/_/g,' ')+'</span>'+
                     '<span class="tt-src-raw">Source amount: '+fmt(rawVal)+'</span>'+
                   '</div>'+
-                  '<div class="tt-src"><span class="tt-bar-track"><span class="tt-bar-fill" style="width:'+Math.min(100,pct*6)+'%"></span></span><span class="tt-src-pct">'+pct+'% of layer</span></div>';
+                  '<div class="tt-src"><span class="tt-bar-track"><span class="tt-bar-fill" style="width:'+Math.min(100,pct*6)+'%"></span></span></div>';
         });
       }
     }
