@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>AQ Grid — Gridded Emissions Inventory Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="style.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="app">
+  <!-- VISUAL PANEL -->
+  <section class="visual">
+    <div class="dust" id="dust"></div>
+    <div class="visual-top">
+      <div class="visual-eyebrow">AQ Grid · gridded emissions view</div>
+    </div>
+    <div class="visual-stage" id="stage">
+      <div class="instructions" id="instructionsBlock">
+        <h1>Turn a source grid into an emissions map</h1>
+        <p class="sub">Feed in a cell-by-cell CSV of pollution sources and a total emissions figure — this view fills in with a heat-mapped inventory once both are ready.</p>
+
+        <div class="num-row">
+          <div class="num">01</div>
+          <div>
+            <p class="step-title">Upload the grid CSV</p>
+            <p class="step-body">Each row is one grid cell. The first two columns are <code>ncol</code> and <code>nrow</code> — the cell's column and row index. Every column after that is a pollution source (population, roads, industries, whatever you're distributing by).</p>
+          </div>
+        </div>
+        <div class="num-row">
+          <div class="num">02</div>
+          <div>
+            <p class="step-title">Enter total emissions</p>
+            <p class="step-body">The one number you're distributing across the grid — in tonnes, or whatever unit your inventory uses.</p>
+          </div>
+        </div>
+        <div class="num-row">
+          <div class="num">03</div>
+          <div>
+            <p class="step-title">Set each source's share</p>
+            <p class="step-body">Once the CSV is read, a slider appears for every source column. Set what percentage of total emissions each one accounts for — they need to add up to 100%.</p>
+          </div>
+        </div>
+        <div class="num-row">
+          <div class="num">04</div>
+          <div>
+            <p class="step-title">Build the emissions grid heatmap</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTROL PANEL -->
+  <section class="panel">
+    <div class="panel-scroll">
+      <div class="brand-row"><div class="brand-mark"></div><div class="brand-name">urbanemissions.info</div></div>
+      <h2>AQ Grid</h2>
+      <p class="tagline">Gridded Emissions Inventory Builder — distribute a total across a source grid and see where it lands.</p>
+
+      <div class="section">
+        <div class="section-head"><span class="section-num">01</span><span class="section-title">Upload grid CSV</span></div>
+        <p class="section-desc">Columns: <code>ncol</code>, <code>nrow</code>, then one column per source.</p>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".csv">
+          <div class="dz-title">Drop CSV or click to browse</div>
+          <div class="dz-sub">.csv with ncol / nrow + source columns</div>
+        </div>
+        <div id="fileChipHolder"></div>
+        <div id="csvError"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head"><span class="section-num">02</span><span class="section-title">Total emissions</span></div>
+        <p class="section-desc">The figure to spread across every cell in the grid.</p>
+        <div class="field">
+          <div class="num-input-row">
+            <input type="number" id="totalEmissions" placeholder="e.g. 5000" min="0" step="any">
+            <span class="unit">tonnes</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" id="sourceSection" style="display:none;">
+        <div class="section-head"><span class="section-num">03</span><span class="section-title">Source shares</span></div>
+        <p class="section-desc">How much of total emissions each source accounts for. Needs to sum to 100%.</p>
+        <div class="sliders" id="sliders"></div>
+        <div class="sum-row" id="sumRow">
+          <span id="sumLabel">Sum: 0%</span>
+          <button id="balanceBtn" type="button">Distribute evenly</button>
+        </div>
+      </div>
+
+      <button class="generate-btn" id="generateBtn" disabled>Build heatmap</button>
+
+      <div class="stats" id="stats" style="display:none;"></div>
+    </div>
+  </section>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
