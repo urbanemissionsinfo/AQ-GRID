@@ -61,8 +61,8 @@ body{
 }
 
 .visual-eyebrow {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-family: 'Times New Roman', monospace;
+  font-size: 1rem;
   letter-spacing: .12em;
   text-transform: uppercase;
   color: var(--brand-dim);
@@ -535,20 +535,97 @@ input[type=range]::-moz-range-thumb{
   border-radius:6px;
   padding:8px 10px;
 }
-@media (max-width:900px){
-  .app{flex-direction:column;}
-  .visual{
-    flex:0 0 auto;
-    max-width:100%;
-    min-height:46vh;
+
+/* ---------- AXIS LABEL CLASSES ---------- */
+.axis-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  color: var(--ink-soft);
+  font-size: 12px;
+  padding-right: 4px;
+}
+
+.axis-x {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-soft);
+  font-size: 12px;
+  padding-top: 4px;
+  grid-column: 2;
+}
+
+@media (max-width: 900px) {
+  html, body {
+    height: auto;
+    overflow: auto;
   }
-  .panel{
-    flex:1 1 auto;
-    max-width:100%;
-    min-height:0;
-    border-left:none;
-    border-top:1px solid var(--line);
+
+  .app {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
   }
-  .instructions h1{font-size:22px;}
-  .visual-stage{padding:18px;}
+
+  .visual {
+    flex: 0 0 auto;
+    max-width: 100%;
+    width: 100%;
+    height: 50vh;
+    min-height: 340px;
+    overflow-y: auto; /* fallback: scroll rather than clip legend/axis if content is tall */
+    overflow-x: hidden;
+  }
+
+  .visual-stage {
+    padding: 8px 12px 16px 12px; /* Tighter padding, extra bottom room for legend */
+    overflow: visible;
+  }
+
+  .heatmap-wrap {
+    gap: 4px; /* Minimize gap between grid and legend */
+  }
+
+  .axis-y, .axis-x {
+    font-size: 9.5px; /* Scale down axis numbers and tags on mobile */
+  }
+
+  .legend {
+    width: 100%;
+    max-width: 100%;
+    padding: 0 4px;
+  }
+
+  .legend-bar {
+    height: 6px;
+  }
+
+  .legend-labels, .legend-cap {
+    font-size: 10px;
+    margin-top: 3px;
+  }
+
+  .legend-cap {
+    padding-bottom: 6px;
+  }
+
+  .panel {
+    flex: 0 0 auto;
+    max-width: 100%;
+    width: 100%;
+    height: auto;
+    border-left: none;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+  }
+
+  .panel-scroll {
+    overflow-y: visible;
+    padding: 20px;
+  }
+
+  .instructions h1 {
+    font-size: 22px;
+  }
 }

@@ -326,16 +326,14 @@ const RAMP = [
 
   function renderHeatmap(result){
     const { grid, ncolMax, nrowMax, min, max } = result;
-    // Measure available stage space minus axis padding
-    const availWidth = stage.clientWidth ? (stage.clientWidth - 100) : 700;
-    const availHeight = stage.clientHeight ? (stage.clientHeight - 160) : 600;
-    const targetGridDim = Math.max(320, Math.min(availWidth, availHeight));
+    const isMobile = window.innerWidth <= 900;
     const stageRect = stage.getBoundingClientRect();
-    // Reserve pixels for Y/X axis labels and legend bar
-    const reservedWidth = 64; 
-    const reservedHeight = 110;
-    const availW = Math.max(50, stageRect.width - reservedWidth);
-    const availH = Math.max(50, stageRect.height - reservedHeight); 
+    // Reserve pixels for Y/X axis labels and legend bar (mobile has tighter
+    // stage padding and a smaller legend, so it needs less headroom reserved)
+    const reservedWidth = isMobile ? 48 : 64;
+    const reservedHeight = isMobile ? 74 : 110;
+    const availW = Math.max(50, stageRect.width - reservedWidth - 4);
+    const availH = Math.max(50, stageRect.height - reservedHeight - 4); 
 
     cellDataFlat = [];
 
@@ -352,34 +350,30 @@ const RAMP = [
     
     // Y-Axis
     const yAxis = document.createElement('div');
-    yAxis.style.display = 'flex';
-    yAxis.style.flexDirection = 'column';
-    yAxis.style.justifyContent = 'space-between';
-    yAxis.style.alignItems = 'flex-end';
-    yAxis.style.color = 'var(--ink-soft)';
-    yAxis.style.fontSize = '12px';
-    yAxis.style.paddingRight = '4px';
-    yAxis.innerHTML = '<span>'+nrowMax+'</span><span style="writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 2px;">nrow</span><span>1</span>';
-
+    yAxis.className = 'axis-y';
+    yAxis.innerHTML = '<span>'+nrowMax+'</span><span style="writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 1px;">nrow</span><span>1</span>';
+    
     // X-Axis
     const xAxis = document.createElement('div');
-    xAxis.style.display = 'flex';
-    xAxis.style.justifyContent = 'space-between';
-    xAxis.style.color = 'var(--ink-soft)';
-    xAxis.style.fontSize = '12px';
-    xAxis.style.paddingTop = '4px';
-    xAxis.style.gridColumn = '2';
-    xAxis.innerHTML = '<span>'+ncolMax+'</span><span style="letter-spacing: 2px;">ncol</span><span>1</span>';
+    xAxis.className = 'axis-x';
+    xAxis.innerHTML = '<span>'+ncolMax+'</span><span style="letter-spacing: 1px;">ncol</span><span>1</span>';
 
     const frame = document.createElement('div');
     frame.className = 'grid-frame';
     const gridEl = document.createElement('div');
     gridEl.id = 'gridCanvasWrap';
 
-    // Constrain cell size so both width and height fit completely inside stage
-    const cellW = availW / ncolMax;
-    const cellH = availH / nrowMax;
-    const cellPx = Math.max(3, Math.floor(targetGridDim / Math.max(ncolMax, nrowMax)));
+    // .grid-frame adds 14px padding + 1px border on each side; #gridCanvasWrap
+    // adds a 1px gap between every cell. Both must be subtracted before we
+    // divide up the space, or the rendered grid overflows the stage and gets
+    // clipped by .visual's overflow:hidden (edges/legend disappear).
+    const FRAME_CHROME = 30; // (14px padding + 1px border) * 2 sides
+    const CELL_GAP = 1;
+    const gridAvailW = Math.max(20, availW - FRAME_CHROME);
+    const gridAvailH = Math.max(20, availH - FRAME_CHROME);
+    const cellW = (gridAvailW - CELL_GAP * (ncolMax - 1)) / ncolMax;
+    const cellH = (gridAvailH - CELL_GAP * (nrowMax - 1)) / nrowMax;
+    const cellPx = Math.max(isMobile ? 2 : 3, Math.floor(Math.min(cellW, cellH)));
     gridEl.style.gridTemplateColumns = 'repeat('+ncolMax+', '+cellPx+'px)';
     gridEl.style.gridTemplateRows = 'repeat('+nrowMax+', '+cellPx+'px)';
     let idx = 0;
