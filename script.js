@@ -271,7 +271,9 @@ let lastResult = null;
 
     // Reordered mapping: 
     // y-axis (rows in DOM) maps to nrow, x-axis (cols in DOM) maps to ncol.
-    // Iterating down to 1 so that the bottom right is (ncol=1, nrow=1).
+    // Rows iterate down from nrowMax to 1 (top to bottom), columns iterate
+    // up from 1 to ncolMax (left to right), so bottom-left is (ncol=1,
+    // nrow=1) and top-right is (ncol=ncolMax, nrow=nrowMax).
     const grid = [];
     let min = Infinity, max = -Infinity, sumEm=0, filled=0;
     let maxCell = null;
@@ -280,7 +282,7 @@ let lastResult = null;
       const rowArr = [];
       const nrow = nrowMax - i;
       for(let j=0;j<ncolMax;j++){
-        const ncol = ncolMax - j;
+        const ncol = j + 1;
         const cell = map.get(ncol+'_'+nrow);
         const emission = cell ? cell.emission : null;
         if(emission !== null){
@@ -356,7 +358,7 @@ const RAMP = [
     // X-Axis
     const xAxis = document.createElement('div');
     xAxis.className = 'axis-x';
-    xAxis.innerHTML = '<span>'+ncolMax+'</span><span style="letter-spacing: 1px;">ncol</span><span>1</span>';
+    xAxis.innerHTML = '<span>1</span><span style="letter-spacing: 1px;">ncol</span><span>'+ncolMax+'</span>';
 
     const frame = document.createElement('div');
     frame.className = 'grid-frame';
@@ -404,7 +406,7 @@ const RAMP = [
     legend.className = 'legend';
     legend.innerHTML =
       '<div class="legend-bar"></div>'+
-      '<div class="legend-labels"><span>'+fmt(min)+'</span><span>'+fmt(Math.round((min + max) / 2))+'</span><span>'+fmt(Math.round((max)))+'</span></div>'+
+      '<div class="legend-labels"><span>'+fmt(Math.round((min)))+'</span><span>'+fmt(Math.round((min + max) / 2))+'</span><span>'+fmt(Math.round((max)))+'</span></div>'+
       '<div class="legend-cap">emissions per cell — colour scaled √ for visibility</div>';
     wrap.appendChild(legend);
 
