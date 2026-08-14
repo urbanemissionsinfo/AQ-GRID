@@ -18,6 +18,96 @@ const layers = {
   builtArea: null
 };
 
+let rawTifInfo = {
+  population: null,
+  builtArea: null
+};
+
+let extractedPop = { urban: 0, rural: 0 };
+let activeBounds = null;
+
+// ── HELPER: GEODESIC AREA CALCULATION ────────────────────────
+function calculateBoundsAreaKm2(bounds) {
+  if (!bounds) return 0;
+  const lat1 = bounds.getSouth() * Math.PI / 180;
+  const lat2 = bounds.getNorth() * Math.PI / 180;
+  const dLng = Math.abs(bounds.getEast() - bounds.getWest()) * Math.PI / 180;
+  const R = 6371.0088; // Earth's mean radius in kilometers
+  
+  return R * R * dLng * Math.abs(Math.sin(lat2) - Math.sin(lat1));
+}
+
+// ── LEAFLET DRAW TOOLBAR ──────────────────────────────────────
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+const drawControl = new L.Control.Draw({
+  draw: {
+    polyline: false,
+    polygon: false,
+    circle: false,
+    marker: false,
+    circlemarker: false,
+    rectangle: {
+      shapeOptions: {
+        color: '#164D12',
+        weight: 2,
+        fillOpacity: 0.15
+      }
+    }
+  },
+  edit: {
+    featureGroup: drawnItems,
+    remove: true
+  }
+});
+map.addControl(drawControl);
+
+map.on(L.Draw.Event.CREATED, function (e) {
+  drawnItems.clearLayers();
+  const layer = e.layer;
+  drawnItems.addLayer(layer);
+  
+  activeBounds = layer.getBounds();
+  updateAOIState(true);
+  extractPopulationsInBounds(activeBounds);
+});
+
+map.on(L.Draw.Event.EDITED, function (e) {
+  e.layers.eachLayer(function (layer) {
+    activeBounds = layer.getBounds();
+    extractPopulationsInBounds(activeBounds);
+  });
+});
+
+map.on(L.Draw.Event.DELETED, function () {
+  clearBoundingBox();
+});
+
+function clearBoundingBox() {
+  drawnItems.clearLayers();
+  activeBounds = null;
+  updateAOIState(false);
+  extractPopulationsInBounds(null);
+}
+
+function updateAOIState(hasBox) {
+  const statusEl = document.getElementById('selection-status');
+  const clearBtn = document.getElementById('btn-clear-box');
+  
+  if (hasBox) {
+    statusEl.textContent = "Filtered Box Area";
+    statusEl.style.color = "#164D12";
+    clearBtn.classList.remove('hidden');
+  } else {
+    statusEl.textContent = "Entire Extent";
+    statusEl.style.color = "#6b7268";
+    clearBtn.classList.add('hidden');
+  }
+}
+
+document.getElementById('btn-clear-box').addEventListener('click', clearBoundingBox);
+
 // ── GEOTIFF LOADER ────────────────────────────────────────────
 async function loadTifData(url) {
   const resp = await fetch(url);
@@ -86,10 +176,10 @@ function createRasterLayer(tifInfo, colorScaleFn) {
             pixels[idx + 2] = b;
             pixels[idx + 3] = a;
           } else {
-            pixels[idx + 3] = 0; // Transparent
+            pixels[idx + 3] = 0;
           }
         } else {
-          pixels[idx + 3] = 0; // Out of bounds
+          pixels[idx + 3] = 0;
         }
       }
     }
@@ -102,23 +192,21 @@ function createRasterLayer(tifInfo, colorScaleFn) {
   return layer;
 }
 
-// ── COLOR SCALES ──────────────────────────────────────────────
+// ── COLOR SCALES & LEGEND ─────────────────────────────────────
 function getPopulationColor(val) {
   if (val < 10)      return [255, 255, 178, 100];
   if (val < 50)      return [254, 204, 92,  160];
   if (val < 200)     return [253, 141, 60,  200];
   if (val < 500)     return [240, 59,  32,  230];
-  return [189, 0, 38, 255]; // > 500
+  return [189, 0, 38, 255];
 }
 
 function getBuiltAreaColor(val) {
-  // Built surface percentage categories using Green, Yellow, and Dark Brown
-  if (val < 10)  return [120, 198, 121, 160]; // Soft Green (< 10%)
-  if (val < 20)  return [254, 217, 118, 200]; // Warm Yellow (10% – 20%)
-  return [96,  56,  19,   230];                 // Dark Brown (>= 20%)
+  if (val < 10)  return [120, 198, 121, 160];
+  if (val < 20)  return [254, 217, 118, 200];
+  return [96,  56,  19,   230];
 }
 
-// ── LEGEND CONTROL ────────────────────────────────────────────
 const LegendControl = L.Control.extend({
   options: { position: 'bottomright' },
   onAdd: function() {
@@ -151,7 +239,6 @@ function updateLegend() {
   }
 
   let html = '';
-
   if (hasPop) {
     html += `<b>Population Density</b><br>` +
       `<i style="background:rgba(255,255,178,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &lt; 10<br>` +
@@ -175,14 +262,251 @@ function updateLegend() {
   legendDiv.innerHTML = html;
 }
 
-// ── INIT LAYERS & UI ──────────────────────────────────────────
+// ── EXTRACTION & BOUNDING BOX STATS ──────────────────────────
+function extractPopulationsInBounds(bounds = null) {
+  if (!rawTifInfo.population || !rawTifInfo.builtArea) return;
+
+  const popInfo = rawTifInfo.population;
+  const builtInfo = rawTifInfo.builtArea;
+
+  let urbanPop = 0;
+  let ruralPop = 0;
+  let totalBuiltPctSum = 0;
+  let validBuiltPixelCount = 0;
+
+  // IMPORTANT:
+  // Population and built-up rasters may have different dimensions/resolutions.
+  // Do NOT use the same row/column index for both rasters.
+  // For every LandScan population cell, find the corresponding pct_built cell
+  // using the geographic centre of the population cell.
+
+  let colMin = 0;
+  let colMax = popInfo.width - 1;
+  let rowMin = 0;
+  let rowMax = popInfo.height - 1;
+
+  if (bounds) {
+    const minLng = bounds.getWest();
+    const maxLng = bounds.getEast();
+    const minLat = bounds.getSouth();
+    const maxLat = bounds.getNorth();
+
+    // Use pixel centres so that we classify the actual cells whose centres
+    // fall inside the selected bounding box.
+    colMin = Math.max(
+      0,
+      Math.ceil((minLng - popInfo.originX) / popInfo.pixelW - 0.5)
+    );
+    colMax = Math.min(
+      popInfo.width - 1,
+      Math.floor((maxLng - popInfo.originX) / popInfo.pixelW - 0.5)
+    );
+
+    rowMin = Math.max(
+      0,
+      Math.ceil((popInfo.originY - maxLat) / popInfo.pixelH - 0.5)
+    );
+    rowMax = Math.min(
+      popInfo.height - 1,
+      Math.floor((popInfo.originY - minLat) / popInfo.pixelH - 0.5)
+    );
+  }
+
+  // No valid population cells in the selected box.
+  if (colMin > colMax || rowMin > rowMax) {
+    extractedPop.urban = 0;
+    extractedPop.rural = 0;
+
+    const areaKm2 = bounds ? calculateBoundsAreaKm2(bounds) : 0;
+    document.getElementById('stat-area').textContent =
+      bounds ? `${areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²` : 'Full Extent';
+    document.getElementById('stat-pop-urban').textContent = '0';
+    document.getElementById('stat-pop-rural').textContent = '0';
+    document.getElementById('stat-pop-total').textContent = '0';
+    document.getElementById('stat-built-share').textContent = '0.0%';
+
+    runCalculations();
+    return;
+  }
+
+  for (let r = rowMin; r <= rowMax; r++) {
+    // Geographic centre of this LandScan cell.
+    const y = popInfo.originY - (r + 0.5) * popInfo.pixelH;
+
+    for (let c = colMin; c <= colMax; c++) {
+      const x = popInfo.originX + (c + 0.5) * popInfo.pixelW;
+
+      const popIdx = r * popInfo.width + c;
+      const popVal = popInfo.data[popIdx];
+
+      const isPopValid =
+        popVal !== null &&
+        popVal !== undefined &&
+        Number.isFinite(Number(popVal)) &&
+        popVal !== popInfo.nodata &&
+        popVal > 0;
+
+      if (!isPopValid) continue;
+
+      // Find the pct_built cell containing the centre of this population cell.
+      const builtCol = Math.floor((x - builtInfo.originX) / builtInfo.pixelW);
+      const builtRow = Math.floor((builtInfo.originY - y) / builtInfo.pixelH);
+
+      if (
+        builtCol < 0 ||
+        builtCol >= builtInfo.width ||
+        builtRow < 0 ||
+        builtRow >= builtInfo.height
+      ) {
+        continue;
+      }
+
+      const builtIdx = builtRow * builtInfo.width + builtCol;
+      const builtVal = builtInfo.data[builtIdx];
+
+      const isBuiltValid =
+        builtVal !== null &&
+        builtVal !== undefined &&
+        Number.isFinite(Number(builtVal)) &&
+        builtVal !== builtInfo.nodata;
+
+      if (!isBuiltValid) continue;
+
+      const builtPct = Number(builtVal);
+
+      totalBuiltPctSum += builtPct;
+      validBuiltPixelCount++;
+
+      // THE CLASSIFICATION:
+      // pct_built >= 20%  -> URBAN
+      // pct_built < 20%   -> RURAL
+      if (builtPct >= 20) {
+        urbanPop += Number(popVal);
+      } else {
+        ruralPop += Number(popVal);
+      }
+    }
+  }
+
+  extractedPop.urban = urbanPop;
+  extractedPop.rural = ruralPop;
+
+  // Calculate Box Stats
+  const areaKm2 = bounds ? calculateBoundsAreaKm2(bounds) : 0;
+  const meanBuiltShare =
+    validBuiltPixelCount > 0
+      ? totalBuiltPctSum / validBuiltPixelCount
+      : 0;
+
+  // Render Stats
+  document.getElementById('stat-area').textContent =
+    bounds
+      ? `${areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²`
+      : 'Full Extent';
+
+  document.getElementById('stat-pop-urban').textContent =
+    urbanPop.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  document.getElementById('stat-pop-rural').textContent =
+    ruralPop.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  document.getElementById('stat-pop-total').textContent =
+    (urbanPop + ruralPop).toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+  document.getElementById('stat-built-share').textContent =
+    `${meanBuiltShare.toFixed(1)}%`;
+
+  runCalculations();
+}
+
+// ── OWB CALCULATIONS ──────────────────────────────────────────
+function runCalculations() {
+  const genU = parseFloat(document.getElementById('gen-urban').value) || 0;
+  const genR = parseFloat(document.getElementById('gen-rural').value) || 0;
+  
+  const pickU = (parseFloat(document.getElementById('pickup-urban').value) || 0) / 100;
+  const pickR = (parseFloat(document.getElementById('pickup-rural').value) || 0) / 100;
+  
+  const burnU = (parseFloat(document.getElementById('burn-urban').value) || 0) / 100;
+  const burnR = (parseFloat(document.getElementById('burn-rural').value) || 0) / 100;
+  
+  const landfillCap = parseFloat(document.getElementById('landfill-cap').value) || 0;
+
+  // 1. Calculate Generated (kg -> tons: / 1000)
+  const genUrbanTons = (extractedPop.urban * genU) / 1000;
+  const genRuralTons = (extractedPop.rural * genR) / 1000;
+  const genTotal = genUrbanTons + genRuralTons;
+
+  // 2. Calculate Picked Up
+  let pickUrbanTons = genUrbanTons * pickU;
+  let pickRuralTons = genRuralTons * pickR;
+  let pickTotal = pickUrbanTons + pickRuralTons;
+
+  // 3. Landfill Capacity Constraint Check
+  const pickupContainer = document.getElementById('pickup-container');
+  const warningText = document.getElementById('landfill-warning');
+  
+  pickupContainer.classList.remove('flash-red');
+  warningText.classList.add('hidden');
+
+  if (landfillCap === 0 && pickTotal > 0) {
+    pickupContainer.classList.add('flash-red');
+    warningText.textContent = "Warning: No landfill size selected (capacity = 0). Waste picked up is not managed! Discounted to 0 tons.";
+    warningText.classList.remove('hidden');
+    pickUrbanTons = 0;
+    pickRuralTons = 0;
+    pickTotal = 0;
+  } else if (pickTotal > landfillCap && landfillCap > 0) {
+    pickupContainer.classList.add('flash-red');
+    warningText.textContent = `Warning: Picked up waste (${pickTotal.toFixed(1)} t/day) exceeds landfill capacity (${landfillCap} t/day). Discounting managed waste to capacity.`;
+    warningText.classList.remove('hidden');
+    
+    const ratio = landfillCap / pickTotal;
+    pickUrbanTons *= ratio;
+    pickRuralTons *= ratio;
+    pickTotal = landfillCap;
+  }
+
+  // 4. Calculate OWB
+  const owbUrban = (genUrbanTons - pickUrbanTons) * burnU;
+  const owbRural = (genRuralTons - pickRuralTons) * burnR;
+  const owbDailyTotal = owbUrban + owbRural;
+  const owbYearlyTotal = owbDailyTotal * 365;
+
+  // 5. Update UI
+  document.getElementById('res-gen-urban').textContent = genUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-gen-rural').textContent = genRuralTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-gen-total').textContent = genTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  document.getElementById('res-pickup-urban').textContent = pickUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-pickup-rural').textContent = pickRuralTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-pickup-total').textContent = pickTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  document.getElementById('res-owb-urban').textContent = owbUrban.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-owb-rural').textContent = owbRural.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-owb-daily').textContent = owbDailyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-owb-yearly').textContent = owbYearlyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+// ── BIND INPUT LISTENERS ──────────────────────────────────────
+const inputIds = [
+  'gen-urban', 'gen-rural', 'pickup-urban', 'pickup-rural', 
+  'burn-urban', 'burn-rural', 'landfill-cap'
+];
+
+inputIds.forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', runCalculations);
+});
+
+// ── INIT APPLICATION ─────────────────────────────────────────
 async function init() {
   const btnPop = document.getElementById('btn-population');
   const btnBuilt = document.getElementById('btn-builtarea');
 
   try {
-    const popInfo = await loadTifData(CONFIG.populationTifPath);
-    layers.population = createRasterLayer(popInfo, getPopulationColor);
+    rawTifInfo.population = await loadTifData(CONFIG.populationTifPath);
+    layers.population = createRasterLayer(rawTifInfo.population, getPopulationColor);
     btnPop.textContent = 'Toggle Population';
     btnPop.disabled = false;
   } catch (err) {
@@ -191,8 +515,8 @@ async function init() {
   }
 
   try {
-    const builtInfo = await loadTifData(CONFIG.builtAreaTifPath);
-    layers.builtArea = createRasterLayer(builtInfo, getBuiltAreaColor);
+    rawTifInfo.builtArea = await loadTifData(CONFIG.builtAreaTifPath);
+    layers.builtArea = createRasterLayer(rawTifInfo.builtArea, getBuiltAreaColor);
     btnBuilt.textContent = 'Toggle Built Area';
     btnBuilt.disabled = false;
   } catch (err) {
@@ -216,7 +540,10 @@ async function init() {
 
   btnPop.addEventListener('click', () => handleToggle('population', btnPop));
   btnBuilt.addEventListener('click', () => handleToggle('builtArea', btnBuilt));
+
+  if (rawTifInfo.population && rawTifInfo.builtArea) {
+    extractPopulationsInBounds(null);
+  }
 }
 
-// Start application
 init();
