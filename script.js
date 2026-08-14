@@ -1,7 +1,7 @@
 // ── CONFIGURATION ─────────────────────────────────────────────
 const CONFIG = {
   populationTifPath: 'data/landscan-southasia-2024-compressed.tif',
-  builtAreaTifPath: 'data/GHS-Southasia-2024-compressed_reproj.tif'
+  builtAreaTifPath: 'data/pct_builtup_southasia2024-compressed_reproj.tif'
 };
 
 // ── MAP INIT ──────────────────────────────────────────────────
@@ -30,7 +30,6 @@ async function loadTifData(url) {
   const bbox = image.getBoundingBox();
   const fileDir = image.getFileDirectory();
   
-  // Check metadata for nodata, fallback to 4294967295 for GHS if not explicitly defined
   let nodata = fileDir.GDAL_NODATA !== undefined ? parseFloat(fileDir.GDAL_NODATA) : null;
   if (nodata === null && url.includes('GHS')) {
     nodata = 4294967295;
@@ -80,7 +79,6 @@ function createRasterLayer(tifInfo, colorScaleFn) {
         if (col >= 0 && col < width && row >= 0 && row < height) {
           const val = data[row * width + col];
           
-          // Filter out NoData (including 4294967295) and true zero values
           if (val !== null && val !== undefined && !isNaN(val) && val !== nodata && val > 0) {
             const [r, g, b, a] = colorScaleFn(val);
             pixels[idx] = r;
@@ -114,12 +112,10 @@ function getPopulationColor(val) {
 }
 
 function getBuiltAreaColor(val) {
-  // Built surface range: 0 to 577,106 sq meters (Binned blue palette)
-  if (val < 1000)    return [208, 209, 230, 150]; // Very Light Blue (Sparse / Rural)
-  if (val < 10000)   return [166, 189, 219, 180]; // Light Blue (Towns)
-  if (val < 50000)   return [116, 169, 207, 200]; // Medium Blue (Suburbs / Small Cities)
-  if (val < 150000)  return [43,  140, 190, 230]; // Dark Blue (Dense Urban)
-  return [4, 90, 141, 255];                       // Deep Navy (Mega-city Cores)
+  // Built surface percentage categories using Green, Yellow, and Dark Brown
+  if (val < 10)  return [120, 198, 121, 160]; // Soft Green (< 10%)
+  if (val < 20)  return [254, 217, 118, 200]; // Warm Yellow (10% – 20%)
+  return [96,  56,  19,   230];                 // Dark Brown (>= 20%)
 }
 
 // ── LEGEND CONTROL ────────────────────────────────────────────
@@ -170,12 +166,10 @@ function updateLegend() {
   }
 
   if (hasBuilt) {
-    html += `<b>Built Surface ($m^2$)</b><br>` +
-      `<i style="background:rgba(208,209,230,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &lt; 1,000<br>` +
-      `<i style="background:rgba(166,189,219,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> 1,000 – 9,999<br>` +
-      `<i style="background:rgba(116,169,207,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> 10,000 – 49,999<br>` +
-      `<i style="background:rgba(43,140,190,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> 50,000 – 149,999<br>` +
-      `<i style="background:rgba(4,90,141,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &ge; 150,000<br>`;
+    html += `<b>Built-up Percentage (%)</b><br>` +
+      `<i style="background:rgba(120,198,121,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &lt; 10%<br>` +
+      `<i style="background:rgba(254,217,118,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> 10% – 20%<br>` +
+      `<i style="background:rgba(96,56,19,0.8); width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &ge; 20%<br>`;
   }
 
   legendDiv.innerHTML = html;
