@@ -287,6 +287,7 @@ function extractPopulationsInBounds(bounds = null) {
   let ruralPop = 0;
   let totalBuiltPctSum = 0;
   let validBuiltPixelCount = 0;
+  let urbanPixelCount = 0;
 
   // IMPORTANT:
   // Population and built-up rasters may have different dimensions/resolutions.
@@ -333,10 +334,11 @@ function extractPopulationsInBounds(bounds = null) {
 
     const areaKm2 = bounds ? calculateBoundsAreaKm2(bounds) : 0;
     document.getElementById('stat-area').textContent =
-      bounds ? `${areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²` : 'Full Extent';
+      bounds ? `${areaKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²` : 'Full Extent';
     document.getElementById('stat-pop-urban').textContent = '0';
     document.getElementById('stat-pop-rural').textContent = '0';
     document.getElementById('stat-pop-total').textContent = '0';
+    // document.getElementById('stat-built-share').textContent = '0.0%';
     document.getElementById('stat-built-share').textContent = '0.0%';
 
     runCalculations();
@@ -378,15 +380,24 @@ function extractPopulationsInBounds(bounds = null) {
       const builtIdx = builtRow * builtInfo.width + builtCol;
       const builtVal = builtInfo.data[builtIdx];
 
+      const builtPctRaw = Number(builtVal);
+
       const isBuiltValid =
         builtVal !== null &&
         builtVal !== undefined &&
-        Number.isFinite(Number(builtVal)) &&
-        builtVal !== builtInfo.nodata;
+        Number.isFinite(builtPctRaw) &&
+        builtVal !== builtInfo.nodata &&
+        // GHS no-data pixels are sometimes stored as 4294967295 (unsigned) but
+        // read back as -1 (signed) depending on the raster's sample format, so
+        // the nodata check above can miss them. Built % is only ever 0-100,
+        // so range-guard as a belt-and-braces filter against any mis-typed
+        // sentinel value slipping through.
+        builtPctRaw >= 0 &&
+        builtPctRaw <= 100;
 
       if (!isBuiltValid) continue;
 
-      const builtPct = Number(builtVal);
+      const builtPct = builtPctRaw;
 
       totalBuiltPctSum += builtPct;
       validBuiltPixelCount++;
@@ -396,6 +407,7 @@ function extractPopulationsInBounds(bounds = null) {
       // pct_built < 20%   -> RURAL
       if (builtPct >= 20) {
         urbanPop += Number(popVal);
+        urbanPixelCount++;
       } else {
         ruralPop += Number(popVal);
       }
@@ -411,11 +423,15 @@ function extractPopulationsInBounds(bounds = null) {
     validBuiltPixelCount > 0
       ? totalBuiltPctSum / validBuiltPixelCount
       : 0;
+  const urbanAreaPct =
+    validBuiltPixelCount > 0
+      ? (urbanPixelCount / validBuiltPixelCount) * 100
+      : 0;
 
   // Render Stats
   document.getElementById('stat-area').textContent =
     bounds
-      ? `${areaKm2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²`
+      ? `${areaKm2.toLocaleString(undefined, { maximumFractionDigits: 0 })} km²`
       : 'Full Extent';
 
   document.getElementById('stat-pop-urban').textContent =
@@ -427,8 +443,10 @@ function extractPopulationsInBounds(bounds = null) {
   document.getElementById('stat-pop-total').textContent =
     (urbanPop + ruralPop).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
+  // document.getElementById('stat-built-share').textContent =
+  //   `${meanBuiltShare.toFixed(1)}%`;
   document.getElementById('stat-built-share').textContent =
-    `${meanBuiltShare.toFixed(1)}%`;
+    `${urbanAreaPct.toFixed(1)}%`;
 
   runCalculations();
 }
@@ -488,18 +506,18 @@ function runCalculations() {
   const owbYearlyTotal = owbDailyTotal * 365;
 
   // 5. Update UI
-  document.getElementById('res-gen-urban').textContent = genUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-gen-rural').textContent = genRuralTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-gen-total').textContent = genTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-gen-urban').textContent = genUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-gen-rural').textContent = genRuralTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-gen-total').textContent = genTotal.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   document.getElementById('res-pickup-urban').textContent = pickUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
   document.getElementById('res-pickup-rural').textContent = pickRuralTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
   document.getElementById('res-pickup-total').textContent = pickTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-  document.getElementById('res-owb-urban').textContent = owbUrban.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-owb-rural').textContent = owbRural.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-owb-daily').textContent = owbDailyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-owb-yearly').textContent = owbYearlyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-owb-urban').textContent = owbUrban.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-owb-rural').textContent = owbRural.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-owb-daily').textContent = owbDailyTotal.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-owb-yearly').textContent = owbYearlyTotal.toLocaleString(undefined, { maximumFractionDigits: 0});
 }
 
 // ── BIND INPUT LISTENERS ──────────────────────────────────────
@@ -560,10 +578,13 @@ async function init() {
   }
 }
 // ============================================================================
-// CSV EXPORT: 0.01 DEGREE GRID (WITH ACTUAL RASTER DATA)
+// GRID DATA ENGINE (CSV EXPORT & HEATMAP OVERLAY)
 // ============================================================================
 
-// 1. Reusable download helper
+// 1. Create a dedicated Map Layer for the Heatmap
+const heatmapLayer = L.featureGroup().addTo(map);
+
+// 2. Reusable download helper
 if (typeof window.downloadBlob === 'undefined') {
   window.downloadBlob = function(content, filename, mime) {
     const blob = new Blob([content], { type: mime });
@@ -578,7 +599,7 @@ if (typeof window.downloadBlob === 'undefined') {
   };
 }
 
-// 2. Generate Grid Logic
+// 3. Generate Blank Grid Coordinates
 function computeGrid01(bbox) {
   const res = 0.01;
   const ncols = Math.round((bbox.neLng - bbox.swLng) / res);
@@ -591,175 +612,240 @@ function computeGrid01(bbox) {
     for (let col = 0; col < ncols; col++){
       const cellSwLng = bbox.swLng + col * res;
       const cellNeLng = bbox.swLng + (col + 1) * res; 
-      const centerLng = (cellSwLng + cellNeLng) / 2;
-      const centerLat = (cellSwLat + cellNeLat) / 2;
       
       cells.push({
-        ncol: col + 1,
-        nrow: row + 1,
+        ncol: col + 1, nrow: row + 1,
         sw_long: cellSwLng, sw_lat: cellSwLat,
         ne_long: cellNeLng, ne_lat: cellNeLat,
-        center_long: centerLng, center_lat: centerLat
+        center_long: (cellSwLng + cellNeLng) / 2, 
+        center_lat: (cellSwLat + cellNeLat) / 2
       });
     }
   }
   return cells;
 }
 
-// 3. Helper to calculate stats for a single 0.01 deg cell
+// 4. Helper to get raw Population & Built Share for a single 0.01 cell
 function getCellStats(c) {
-  if (!rawTifInfo.population || !rawTifInfo.builtArea) {
-    return { urbanPop: 0, ruralPop: 0, totalPop: 0, meanBuiltShare: 0 };
-  }
+  if (!rawTifInfo.population || !rawTifInfo.builtArea) return { urbanPop: 0, ruralPop: 0, totalPop: 0, meanBuiltShare: 0 };
+  const popInfo = rawTifInfo.population; const builtInfo = rawTifInfo.builtArea;
+  const colMin = Math.max(0, Math.ceil((c.sw_long - popInfo.originX) / popInfo.pixelW - 0.5));
+  const colMax = Math.min(popInfo.width - 1, Math.floor((c.ne_long - popInfo.originX) / popInfo.pixelW - 0.5));
+  const rowMin = Math.max(0, Math.ceil((popInfo.originY - c.ne_lat) / popInfo.pixelH - 0.5));
+  const rowMax = Math.min(popInfo.height - 1, Math.floor((popInfo.originY - c.sw_lat) / popInfo.pixelH - 0.5));
 
-  const popInfo = rawTifInfo.population;
-  const builtInfo = rawTifInfo.builtArea;
-
-  const minLng = c.sw_long;
-  const maxLng = c.ne_long;
-  const minLat = c.sw_lat;
-  const maxLat = c.ne_lat;
-
-  // Convert lat/lng to pixel indices
-  const colMin = Math.max(0, Math.ceil((minLng - popInfo.originX) / popInfo.pixelW - 0.5));
-  const colMax = Math.min(popInfo.width - 1, Math.floor((maxLng - popInfo.originX) / popInfo.pixelW - 0.5));
-  const rowMin = Math.max(0, Math.ceil((popInfo.originY - maxLat) / popInfo.pixelH - 0.5));
-  const rowMax = Math.min(popInfo.height - 1, Math.floor((popInfo.originY - minLat) / popInfo.pixelH - 0.5));
-
-  let urbanPop = 0;
-  let ruralPop = 0;
-  let totalBuiltPctSum = 0;
-  let validBuiltPixelCount = 0;
-
-  if (colMin > colMax || rowMin > rowMax) {
-    return { urbanPop: 0, ruralPop: 0, totalPop: 0, meanBuiltShare: 0 };
-  }
+  let urbanPop = 0, ruralPop = 0, totalBuiltPctSum = 0, validBuiltPixelCount = 0;
+  if (colMin > colMax || rowMin > rowMax) return { urbanPop: 0, ruralPop: 0, totalPop: 0, meanBuiltShare: 0 };
 
   for (let r = rowMin; r <= rowMax; r++) {
     const y = popInfo.originY - (r + 0.5) * popInfo.pixelH;
     for (let col = colMin; col <= colMax; col++) {
       const x = popInfo.originX + (col + 0.5) * popInfo.pixelW;
+      const popVal = popInfo.data[r * popInfo.width + col];
 
-      const popIdx = r * popInfo.width + col;
-      const popVal = popInfo.data[popIdx];
-
-      const isPopValid = popVal !== null && popVal !== undefined && Number.isFinite(Number(popVal)) && popVal !== popInfo.nodata && popVal > 0;
-      if (!isPopValid) continue;
-
-      const builtCol = Math.floor((x - builtInfo.originX) / builtInfo.pixelW);
-      const builtRow = Math.floor((builtInfo.originY - y) / builtInfo.pixelH);
-
-      if (builtCol < 0 || builtCol >= builtInfo.width || builtRow < 0 || builtRow >= builtInfo.height) continue;
-
-      const builtIdx = builtRow * builtInfo.width + builtCol;
-      const builtVal = builtInfo.data[builtIdx];
-
-      const isBuiltValid = builtVal !== null && builtVal !== undefined && Number.isFinite(Number(builtVal)) && builtVal !== builtInfo.nodata;
-      if (!isBuiltValid) continue;
-
-      const builtPct = Number(builtVal);
-      totalBuiltPctSum += builtPct;
-      validBuiltPixelCount++;
-
-      // Your existing classification logic
-      if (builtPct >= 20) {
-        urbanPop += Number(popVal);
-      } else {
-        ruralPop += Number(popVal);
+      if (popVal !== null && popVal !== undefined && Number.isFinite(Number(popVal)) && popVal !== popInfo.nodata && popVal > 0) {
+        const builtCol = Math.floor((x - builtInfo.originX) / builtInfo.pixelW);
+        const builtRow = Math.floor((builtInfo.originY - y) / builtInfo.pixelH);
+        
+        if (builtCol >= 0 && builtCol < builtInfo.width && builtRow >= 0 && builtRow < builtInfo.height) {
+          const builtVal = builtInfo.data[builtRow * builtInfo.width + builtCol];
+          const builtPctRaw = Number(builtVal);
+          if (
+            builtVal !== null &&
+            builtVal !== undefined &&
+            Number.isFinite(builtPctRaw) &&
+            builtVal !== builtInfo.nodata &&
+            builtPctRaw >= 0 &&
+            builtPctRaw <= 100
+          ) {
+            const builtPct = builtPctRaw;
+            totalBuiltPctSum += builtPct;
+            validBuiltPixelCount++;
+            (builtPct >= 20) ? (urbanPop += Number(popVal)) : (ruralPop += Number(popVal));
+          }
+        }
       }
     }
   }
-
-  const meanBuiltShare = validBuiltPixelCount > 0 ? totalBuiltPctSum / validBuiltPixelCount : 0;
-  
-  return {
-    urbanPop: urbanPop,
-    ruralPop: ruralPop,
-    totalPop: urbanPop + ruralPop,
-    meanBuiltShare: meanBuiltShare
-  };
+  return { urbanPop, ruralPop, totalPop: urbanPop + ruralPop, meanBuiltShare: validBuiltPixelCount > 0 ? totalBuiltPctSum / validBuiltPixelCount : 0 };
 }
 
-// 4. Attach Click Event to the Download Button
-const downloadGridCsvBtn = document.getElementById('download-grid-csv');
-
-if (downloadGridCsvBtn) {
-  downloadGridCsvBtn.addEventListener('click', async function() {
-    
-    if (!activeBounds) {
-        alert("Please draw a bounding box on the map first to export data.");
-        return;
-    }
-
-    const activeBbox = {
-        swLng: activeBounds.getWest(), swLat: activeBounds.getSouth(),
-        neLng: activeBounds.getEast(), neLat: activeBounds.getNorth()
-    };
-
-    // Generate the 0.01 grid cells
+// 5. Shared Function: Calculate full grid data (Used by both CSV and Heatmap)
+function calculateGridData(activeBbox) {
     const cells = computeGrid01(activeBbox);
-    if (cells.length === 0) {
-        alert("Bounding box is too small or invalid.");
-        return;
-    }
-
-    // Get current User Inputs from the Calculator UI
     const genU = parseFloat(document.getElementById('gen-urban')?.value) || 0;
     const pickU = (parseFloat(document.getElementById('pickup-urban')?.value) || 0) / 100;
     const burnU = (parseFloat(document.getElementById('burn-urban')?.value) || 0) / 100;
-
     const genR = parseFloat(document.getElementById('gen-rural')?.value) || 0;
     const pickR = (parseFloat(document.getElementById('pickup-rural')?.value) || 0) / 100;
     const burnR = (parseFloat(document.getElementById('burn-rural')?.value) || 0) / 100;
 
-    // Set up CSV Headers
-    let csvContent = "ncol,nrow,center_long,center_lat,total_population,urban_population,rural_population,mean_built_share_pct,waste_gen_kg_day,waste_burnt_kg_day,owb_emissions_tons_day\n";
-
-    // Inform user calculation is running
-    downloadGridCsvBtn.textContent = "Calculating...";
-    downloadGridCsvBtn.disabled = true;
-
-    // Use a small timeout to allow UI to update to "Calculating..." before freezing the thread
-    setTimeout(() => {
-      // Iterate over cells and run formulas
-      for (const c of cells) {
-        
-        // 🚀 ACTUALLY EXTRACT FROM RASTER TIFS
+    const dataArray = [];
+    for (const c of cells) {
         const stats = getCellStats(c);
-        
-        let popUrban = stats.urbanPop;
-        let popRural = stats.ruralPop;
-        let cellPop = stats.totalPop;
-        let cellBuiltShare = stats.meanBuiltShare; // percentage 0-100
+        if (stats.totalPop === 0) continue; // Skip empty cells (deserts, oceans)
 
-        // Math: Waste Generation
-        let wasteGenU = popUrban * genU;
-        let wasteGenR = popRural * genR;
-        let totalGenKg = wasteGenU + wasteGenR;
-
-        // Math: Waste Picked up vs Burnt
+        let wasteGenU = stats.urbanPop * genU;
+        let wasteGenR = stats.ruralPop * genR;
         let uncollectedU = wasteGenU * (1 - pickU);
         let uncollectedR = wasteGenR * (1 - pickR);
         let burntUKg = uncollectedU * burnU;
         let burntRKg = uncollectedR * burnR;
         let totalBurntKg = burntUKg + burntRKg;
 
-        // Math: Emissions
-        let owbTons = totalBurntKg / 1000;
+        dataArray.push({
+            c, stats, 
+            totalGenKg: wasteGenU + wasteGenR, 
+            totalBurntKg: totalBurntKg, 
+            owbTons: totalBurntKg / 1000
+        });
+    }
+    return dataArray;
+}
 
-        // Only append row if there is actually people or waste, to save CSV size (optional, but good practice)
-        if (cellPop > 0) {
-            csvContent += `${c.ncol},${c.nrow},${c.center_long.toFixed(4)},${c.center_lat.toFixed(4)},${cellPop.toFixed(2)},${popUrban.toFixed(2)},${popRural.toFixed(2)},${cellBuiltShare.toFixed(2)},${totalGenKg.toFixed(2)},${totalBurntKg.toFixed(2)},${owbTons.toFixed(4)}\n`;
-        }
-      }
+// ============================================================================
+// EVENT LISTENERS: CSV AND HEATMAP
+// ============================================================================
 
-      // Trigger file download
-      window.downloadBlob(csvContent, 'owb_grid_emissions.csv', 'text/csv');
+const downloadGridCsvBtn = document.getElementById('download-grid-csv');
+const btnShowHeatmap = document.getElementById('btn-show-heatmap');
+const btnClearHeatmap = document.getElementById('btn-clear-heatmap');
+
+// Helper to get bounding box
+function getActiveBbox() {
+    if (!activeBounds) return null;
+    return { swLng: activeBounds.getWest(), swLat: activeBounds.getSouth(), neLng: activeBounds.getEast(), neLat: activeBounds.getNorth() };
+}
+
+// --- CSV EXPORT ACTION ---
+if (downloadGridCsvBtn) {
+  downloadGridCsvBtn.addEventListener('click', function() {
+    const activeBbox = getActiveBbox();
+    if (!activeBbox) return alert("Please draw a bounding box first.");
+
+    downloadGridCsvBtn.textContent = "Calculating..."; downloadGridCsvBtn.disabled = true;
+
+    setTimeout(() => {
+      const gridData = calculateGridData(activeBbox);
+      let csvContent = "ncol,nrow,center_long,center_lat,total_population,urban_population,rural_population,mean_built_share_pct,waste_gen_kg_day,waste_burnt_kg_day,owb_emissions_tons_day\n";
       
-      // Reset button
-      downloadGridCsvBtn.textContent = "↓ Download 0.01° Grid CSV";
-      downloadGridCsvBtn.disabled = false;
+      gridData.forEach(d => {
+        csvContent += `${d.c.ncol},${d.c.nrow},${d.c.center_long.toFixed(4)},${d.c.center_lat.toFixed(4)},${d.stats.totalPop.toFixed(2)},${d.stats.urbanPop.toFixed(2)},${d.stats.ruralPop.toFixed(2)},${d.stats.meanBuiltShare.toFixed(2)},${d.totalGenKg.toFixed(2)},${d.totalBurntKg.toFixed(2)},${d.owbTons.toFixed(4)}\n`;
+      });
+
+      window.downloadBlob(csvContent, 'owb_grid_emissions.csv', 'text/csv');
+      downloadGridCsvBtn.textContent = "↓ Download 0.01° Grid CSV"; downloadGridCsvBtn.disabled = false;
     }, 50);
   });
 }
+
+// --- HEATMAP LEGEND CONTROL ---
+const heatmapLegend = L.control({ position: 'bottomleft' });
+
+heatmapLegend.onAdd = function () {
+    const div = L.DomUtil.create('div', 'info legend');
+    div.id = 'heatmap-legend';
+    div.style.background = 'white';
+    div.style.padding = '10px 14px';
+    div.style.borderRadius = '8px';
+    div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+    div.style.fontFamily = 'inherit';
+    div.style.fontSize = '0.8rem';
+    div.style.lineHeight = '1.4';
+    div.style.color = '#1a1e18';
+    return div;
+};
+
+// --- HEATMAP GENERATOR ACTION ---
+// Define Color Scale (Yellow to Red based on max value)
+function getHeatmapColor(val, maxVal) {
+    if (maxVal === 0 || val === 0) return 'transparent'; 
+    const ratio = val / maxVal;
+    if (ratio > 0.8) return '#bd0026'; // Dark Red
+    if (ratio > 0.6) return '#f03b20'; // Red
+    if (ratio > 0.4) return '#fd8d3c'; // Orange
+    if (ratio > 0.2) return '#fecc5c'; // Yellow-Orange
+    return '#ffffb2';                  // Yellow
+}
+
+if (btnShowHeatmap) {
+    btnShowHeatmap.addEventListener('click', function() {
+        const activeBbox = getActiveBbox();
+        if (!activeBbox) return alert("Please draw a bounding box first.");
+
+        btnShowHeatmap.textContent = "Rendering..."; btnShowHeatmap.disabled = true;
+
+        setTimeout(() => {
+            heatmapLayer.clearLayers();
+            const gridData = calculateGridData(activeBbox);
+
+            if (gridData.length === 0) {
+                alert("No population data found in this area.");
+                btnShowHeatmap.textContent = "🔥 Show Waste Burnt Heatmap (0.01°)"; btnShowHeatmap.disabled = false;
+                return;
+            }
+
+            // Find the maximum burnt kg to scale our colors dynamically
+            const maxBurnt = Math.max(...gridData.map(d => d.totalBurntKg));
+
+            // Render rectangles onto the map
+            gridData.forEach(d => {
+                if (d.totalBurntKg === 0) return; 
+                
+                const bounds = [[d.c.sw_lat, d.c.sw_long], [d.c.ne_lat, d.c.ne_long]];
+                const color = getHeatmapColor(d.totalBurntKg, maxBurnt);
+
+                const rect = L.rectangle(bounds, {
+                    color: '#000000', // Black border color
+                    weight: 0.5,      // Thin border width
+                    fillColor: color, // Heatmap color for the inside
+                    fillOpacity: 0.6  // Semi-transparent fill
+                });
+                
+                rect.bindTooltip(`
+                    <div style="text-align:center;">
+                        <b>🔥 Waste Burnt:</b> ${d.totalBurntKg.toFixed(1)} kg/day<br>
+                        <b>👥 Population:</b> ${d.stats.totalPop.toFixed(0)}
+                    </div>
+                `, { direction: 'top', className: 'custom-tooltip' });
+                
+                heatmapLayer.addLayer(rect);
+            });
+
+            // Add dynamic legend to the map
+            heatmapLegend.addTo(map);
+            const legendDiv = document.getElementById('heatmap-legend');
+            if (legendDiv) {
+                legendDiv.innerHTML = `
+                    <b>🔥 Waste Burnt (kg/day)</b><br>
+                    <span style="color:#6b7268; font-size: 0.75rem; margin-bottom: 6px; display: block;">Per 0.01° grid cell</span>
+                    <i style="background:#ffffb2; border: 1px solid #000; width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &gt; 0 to ${(maxBurnt * 0.2).toFixed(0)}<br>
+                    <i style="background:#fecc5c; border: 1px solid #000; width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &gt; ${(maxBurnt * 0.2).toFixed(0)} to ${(maxBurnt * 0.4).toFixed(0)}<br>
+                    <i style="background:#fd8d3c; border: 1px solid #000; width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &gt; ${(maxBurnt * 0.4).toFixed(0)} to ${(maxBurnt * 0.6).toFixed(0)}<br>
+                    <i style="background:#f03b20; border: 1px solid #000; width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &gt; ${(maxBurnt * 0.6).toFixed(0)} to ${(maxBurnt * 0.8).toFixed(0)}<br>
+                    <i style="background:#bd0026; border: 1px solid #000; width:12px; height:12px; display:inline-block; margin-right:5px;"></i> &gt; ${(maxBurnt * 0.8).toFixed(0)}<br>
+                `;
+            }
+
+            if (btnClearHeatmap) btnClearHeatmap.classList.remove('hidden');
+            btnShowHeatmap.textContent = "🔥 Show Waste Burnt Heatmap (0.01°)"; btnShowHeatmap.disabled = false;
+        }, 50);
+    });
+}
+
+// --- CLEAR HEATMAP ACTION ---
+if (btnClearHeatmap) {
+    btnClearHeatmap.addEventListener('click', function() {
+        heatmapLayer.clearLayers();
+        map.removeControl(heatmapLegend); // Hide legend
+        btnClearHeatmap.classList.add('hidden');
+    });
+}
+
+// Auto-clear heatmap & legend when clearing the overall bounding box
+document.getElementById('btn-clear-box')?.addEventListener('click', () => {
+    heatmapLayer.clearLayers();
+    map.removeControl(heatmapLegend); // Hide legend
+    if(btnClearHeatmap) btnClearHeatmap.classList.add('hidden');
+});
 init();

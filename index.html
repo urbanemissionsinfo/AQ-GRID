@@ -12,9 +12,18 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
   
   <!-- Custom CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,700;0,800;1,400;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- ================= HEADER ================= -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      Waste &amp; Open Waste Burning (OWB) Calculator <span>Urban Emissions Info</span>
+    </div>
+  </header>
 
   <div id="app-container">
     <!-- Left: Map Area (70%) -->
@@ -27,10 +36,9 @@
       <div id="map"></div>
     </div>
 
-    <!-- Right: Calculation Panel (30%) -->
     <!-- Right: Calculation Panel (35%) -->
     <div id="calc-panel">
-      <h2>Waste & OWB Calculator</h2>
+      <!-- <h2>Waste & OWB Calculator</h2> -->
 
       <button id="drawRectBtn" class="btn primary-btn" style="background-color: var(--accent); color: white; margin-bottom: 12px; width: 100%; padding: 10px; font-weight: 600; border-radius: var(--radius-md); border: none; cursor: pointer;">Draw Bounding Box on Map</button>
       
@@ -44,7 +52,8 @@
       <div class="aoi-overview">
         <div class="stat-item"><span>Area</span><strong id="stat-area">-- km²</strong></div>
         <div class="stat-item"><span>Total Pop</span><strong id="stat-pop-total">0</strong></div>
-        <div class="stat-item"><span>Built Share</span><strong id="stat-built-share">0%</strong></div>
+        <!-- <div class="stat-item"><span>Built Share</span><strong id="stat-built-share">0%</strong></div> -->
+        <div class="stat-item"><span>Urban Area</span><strong id="stat-built-share">0%</strong></div>
       </div>
 
       <!-- 2-Column Split: Urban vs Rural -->
@@ -118,11 +127,20 @@
         <div class="yearly-owb" style="margin-bottom: 16px;">
           Yearly OWB Estimate: <strong id="res-owb-yearly">0</strong> tons/year
         </div>
-        
-        <!-- NEW: Download CSV Button -->
-        <button id="download-grid-csv" class="btn" style="width: 100%; background: #ffffff; color: var(--accent); border: none; padding: 10px; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer;">
+
+        <!-- Heatmap Buttons -->
+        <button id="btn-show-heatmap" class="btn" style="width: 100%; background: #ff9800; color: white; border: none; padding: 10px; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer; margin-top: 12px;">
+          🔥 Show Waste Burnt Heatmap (0.01°)
+        </button>
+
+        <button id="btn-clear-heatmap" class="btn hidden" style="width: 100%; background: #e0e0e0; color: #333; border: none; padding: 10px; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer; margin-top: 8px;">
+          Clear Heatmap
+        </button>
+
+        <button id="download-grid-csv" class="btn" style="width: 100%; background: #ffffff; color: var(--accent); border: none; padding: 10px; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer; margin-top: 12px;">
           ↓ Download 0.01° Grid CSV
         </button>
+        
       </div>
     </div>
   </div>

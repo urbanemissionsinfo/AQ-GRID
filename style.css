@@ -29,17 +29,73 @@ body {
   height: 100vh;
   width: 100vw;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
   color: var(--text);
   background-color: var(--background);
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── HEADER ──────────────────────────────────────────────────── */
+header {
+  padding: 10px 20px;
+  border-bottom: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  z-index: 2000;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-family: 'Source Serif 4', 'Georgia', serif;
+}
+
+.logo span {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.logo-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: pulse 2.5s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.75); }
+}
+
+@media (max-width: 700px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .logo {
+    font-size: 0.95rem;
+  }
+}
+
 /* ── LAYOUT STRUCTURE ────────────────────────────────────────── */
 #app-container {
   display: flex;
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 #map-section {
