@@ -510,9 +510,9 @@ function runCalculations() {
   document.getElementById('res-gen-rural').textContent = genRuralTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
   document.getElementById('res-gen-total').textContent = genTotal.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-  document.getElementById('res-pickup-urban').textContent = pickUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  document.getElementById('res-pickup-rural').textContent = pickRuralTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
-  document.getElementById('res-pickup-total').textContent = pickTotal.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-pickup-urban').textContent = pickUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-pickup-rural').textContent = pickRuralTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-pickup-total').textContent = pickTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
   document.getElementById('res-owb-urban').textContent = owbUrban.toLocaleString(undefined, { maximumFractionDigits: 0 });
   document.getElementById('res-owb-rural').textContent = owbRural.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -679,16 +679,45 @@ function calculateGridData(activeBbox) {
     const genR = parseFloat(document.getElementById('gen-rural')?.value) || 0;
     const pickR = (parseFloat(document.getElementById('pickup-rural')?.value) || 0) / 100;
     const burnR = (parseFloat(document.getElementById('burn-rural')?.value) || 0) / 100;
+    const landfillCap = parseFloat(document.getElementById('landfill-cap')?.value) || 0;
 
-    const dataArray = [];
+    // Pass 1: compute raw generated/picked-up per cell so we know the
+    // AOI-wide picked-up total, needed to size the capacity discount ratio.
+    const rawCells = [];
+    let pickTotalRawKg = 0;
     for (const c of cells) {
         const stats = getCellStats(c);
         if (stats.totalPop === 0) continue; // Skip empty cells (deserts, oceans)
 
-        let wasteGenU = stats.urbanPop * genU;
-        let wasteGenR = stats.ruralPop * genR;
-        let uncollectedU = wasteGenU * (1 - pickU);
-        let uncollectedR = wasteGenR * (1 - pickR);
+        const wasteGenU = stats.urbanPop * genU;
+        const wasteGenR = stats.ruralPop * genR;
+        const pickUKg = wasteGenU * pickU;
+        const pickRKg = wasteGenR * pickR;
+
+        pickTotalRawKg += pickUKg + pickRKg;
+        rawCells.push({ c, stats, wasteGenU, wasteGenR, pickUKg, pickRKg });
+    }
+
+    // Same capacity-constraint logic as runCalculations(), applied as a
+    // single AOI-wide ratio so per-cell numbers stay consistent with the
+    // panel totals: no landfill selected -> nothing is landfilled (all
+    // picked-up waste is treated as uncollected); over capacity -> scale
+    // down the picked-up amount proportionally.
+    const pickTotalRawTons = pickTotalRawKg / 1000;
+    let capRatio = 1;
+    if (landfillCap === 0 && pickTotalRawTons > 0) {
+        capRatio = 0;
+    } else if (pickTotalRawTons > landfillCap && landfillCap > 0) {
+        capRatio = landfillCap / pickTotalRawTons;
+    }
+
+    // Pass 2: apply the ratio and compute what's actually burnt per cell.
+    const dataArray = [];
+    for (const { c, stats, wasteGenU, wasteGenR, pickUKg, pickRKg } of rawCells) {
+        const effPickUKg = pickUKg * capRatio;
+        const effPickRKg = pickRKg * capRatio;
+        let uncollectedU = wasteGenU - effPickUKg;
+        let uncollectedR = wasteGenR - effPickRKg;
         let burntUKg = uncollectedU * burnU;
         let burntRKg = uncollectedR * burnR;
         let totalBurntKg = burntUKg + burntRKg;
