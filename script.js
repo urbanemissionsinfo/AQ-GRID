@@ -1,7 +1,7 @@
 // ── CONFIGURATION ─────────────────────────────────────────────
 const CONFIG = {
   populationTifPath: 'data/landscan-southasia-2024-compressed.tif',
-  builtAreaTifPath: 'data/pct_builtup_southasia2024-compressed_reproj.tif'
+  builtAreaTifPath: 'data/GHS-Southasia-2024-4326-deflate.tif'
 };
 
 // ── MAP INIT ──────────────────────────────────────────────────
@@ -62,6 +62,20 @@ const drawControl = new L.Control.Draw({
   }
 });
 map.addControl(drawControl);
+
+// ---------- Prominent Draw Button Integration ----------
+const drawRectBtn = document.getElementById('drawRectBtn');
+
+if (drawRectBtn) {
+  drawRectBtn.addEventListener('click', function() {
+    for (let id in drawControl._toolbars.draw._modes) {
+      if (drawControl._toolbars.draw._modes[id].handler instanceof L.Draw.Rectangle) {
+        drawControl._toolbars.draw._modes[id].handler.enable();
+        break;
+      }
+    }
+  });
+}
 
 map.on(L.Draw.Event.CREATED, function (e) {
   drawnItems.clearLayers();
@@ -545,5 +559,207 @@ async function init() {
     extractPopulationsInBounds(null);
   }
 }
+// ============================================================================
+// CSV EXPORT: 0.01 DEGREE GRID (WITH ACTUAL RASTER DATA)
+// ============================================================================
 
+// 1. Reusable download helper
+if (typeof window.downloadBlob === 'undefined') {
+  window.downloadBlob = function(content, filename, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+}
+
+// 2. Generate Grid Logic
+function computeGrid01(bbox) {
+  const res = 0.01;
+  const ncols = Math.round((bbox.neLng - bbox.swLng) / res);
+  const nrows = Math.round((bbox.neLat - bbox.swLat) / res);
+  const cells = [];
+  
+  for (let row = 0; row < nrows; row++){
+    const cellSwLat = bbox.swLat + row * res;
+    const cellNeLat = bbox.swLat + (row + 1) * res; 
+    for (let col = 0; col < ncols; col++){
+      const cellSwLng = bbox.swLng + col * res;
+      const cellNeLng = bbox.swLng + (col + 1) * res; 
+      const centerLng = (cellSwLng + cellNeLng) / 2;
+      const centerLat = (cellSwLat + cellNeLat) / 2;
+      
+      cells.push({
+        ncol: col + 1,
+        nrow: row + 1,
+        sw_long: cellSwLng, sw_lat: cellSwLat,
+        ne_long: cellNeLng, ne_lat: cellNeLat,
+        center_long: centerLng, center_lat: centerLat
+      });
+    }
+  }
+  return cells;
+}
+
+// 3. Helper to calculate stats for a single 0.01 deg cell
+function getCellStats(c) {
+  if (!rawTifInfo.population || !rawTifInfo.builtArea) {
+    return { urbanPop: 0, ruralPop: 0, totalPop: 0, meanBuiltShare: 0 };
+  }
+
+  const popInfo = rawTifInfo.population;
+  const builtInfo = rawTifInfo.builtArea;
+
+  const minLng = c.sw_long;
+  const maxLng = c.ne_long;
+  const minLat = c.sw_lat;
+  const maxLat = c.ne_lat;
+
+  // Convert lat/lng to pixel indices
+  const colMin = Math.max(0, Math.ceil((minLng - popInfo.originX) / popInfo.pixelW - 0.5));
+  const colMax = Math.min(popInfo.width - 1, Math.floor((maxLng - popInfo.originX) / popInfo.pixelW - 0.5));
+  const rowMin = Math.max(0, Math.ceil((popInfo.originY - maxLat) / popInfo.pixelH - 0.5));
+  const rowMax = Math.min(popInfo.height - 1, Math.floor((popInfo.originY - minLat) / popInfo.pixelH - 0.5));
+
+  let urbanPop = 0;
+  let ruralPop = 0;
+  let totalBuiltPctSum = 0;
+  let validBuiltPixelCount = 0;
+
+  if (colMin > colMax || rowMin > rowMax) {
+    return { urbanPop: 0, ruralPop: 0, totalPop: 0, meanBuiltShare: 0 };
+  }
+
+  for (let r = rowMin; r <= rowMax; r++) {
+    const y = popInfo.originY - (r + 0.5) * popInfo.pixelH;
+    for (let col = colMin; col <= colMax; col++) {
+      const x = popInfo.originX + (col + 0.5) * popInfo.pixelW;
+
+      const popIdx = r * popInfo.width + col;
+      const popVal = popInfo.data[popIdx];
+
+      const isPopValid = popVal !== null && popVal !== undefined && Number.isFinite(Number(popVal)) && popVal !== popInfo.nodata && popVal > 0;
+      if (!isPopValid) continue;
+
+      const builtCol = Math.floor((x - builtInfo.originX) / builtInfo.pixelW);
+      const builtRow = Math.floor((builtInfo.originY - y) / builtInfo.pixelH);
+
+      if (builtCol < 0 || builtCol >= builtInfo.width || builtRow < 0 || builtRow >= builtInfo.height) continue;
+
+      const builtIdx = builtRow * builtInfo.width + builtCol;
+      const builtVal = builtInfo.data[builtIdx];
+
+      const isBuiltValid = builtVal !== null && builtVal !== undefined && Number.isFinite(Number(builtVal)) && builtVal !== builtInfo.nodata;
+      if (!isBuiltValid) continue;
+
+      const builtPct = Number(builtVal);
+      totalBuiltPctSum += builtPct;
+      validBuiltPixelCount++;
+
+      // Your existing classification logic
+      if (builtPct >= 20) {
+        urbanPop += Number(popVal);
+      } else {
+        ruralPop += Number(popVal);
+      }
+    }
+  }
+
+  const meanBuiltShare = validBuiltPixelCount > 0 ? totalBuiltPctSum / validBuiltPixelCount : 0;
+  
+  return {
+    urbanPop: urbanPop,
+    ruralPop: ruralPop,
+    totalPop: urbanPop + ruralPop,
+    meanBuiltShare: meanBuiltShare
+  };
+}
+
+// 4. Attach Click Event to the Download Button
+const downloadGridCsvBtn = document.getElementById('download-grid-csv');
+
+if (downloadGridCsvBtn) {
+  downloadGridCsvBtn.addEventListener('click', async function() {
+    
+    if (!activeBounds) {
+        alert("Please draw a bounding box on the map first to export data.");
+        return;
+    }
+
+    const activeBbox = {
+        swLng: activeBounds.getWest(), swLat: activeBounds.getSouth(),
+        neLng: activeBounds.getEast(), neLat: activeBounds.getNorth()
+    };
+
+    // Generate the 0.01 grid cells
+    const cells = computeGrid01(activeBbox);
+    if (cells.length === 0) {
+        alert("Bounding box is too small or invalid.");
+        return;
+    }
+
+    // Get current User Inputs from the Calculator UI
+    const genU = parseFloat(document.getElementById('gen-urban')?.value) || 0;
+    const pickU = (parseFloat(document.getElementById('pickup-urban')?.value) || 0) / 100;
+    const burnU = (parseFloat(document.getElementById('burn-urban')?.value) || 0) / 100;
+
+    const genR = parseFloat(document.getElementById('gen-rural')?.value) || 0;
+    const pickR = (parseFloat(document.getElementById('pickup-rural')?.value) || 0) / 100;
+    const burnR = (parseFloat(document.getElementById('burn-rural')?.value) || 0) / 100;
+
+    // Set up CSV Headers
+    let csvContent = "ncol,nrow,center_long,center_lat,total_population,urban_population,rural_population,mean_built_share_pct,waste_gen_kg_day,waste_burnt_kg_day,owb_emissions_tons_day\n";
+
+    // Inform user calculation is running
+    downloadGridCsvBtn.textContent = "Calculating...";
+    downloadGridCsvBtn.disabled = true;
+
+    // Use a small timeout to allow UI to update to "Calculating..." before freezing the thread
+    setTimeout(() => {
+      // Iterate over cells and run formulas
+      for (const c of cells) {
+        
+        // 🚀 ACTUALLY EXTRACT FROM RASTER TIFS
+        const stats = getCellStats(c);
+        
+        let popUrban = stats.urbanPop;
+        let popRural = stats.ruralPop;
+        let cellPop = stats.totalPop;
+        let cellBuiltShare = stats.meanBuiltShare; // percentage 0-100
+
+        // Math: Waste Generation
+        let wasteGenU = popUrban * genU;
+        let wasteGenR = popRural * genR;
+        let totalGenKg = wasteGenU + wasteGenR;
+
+        // Math: Waste Picked up vs Burnt
+        let uncollectedU = wasteGenU * (1 - pickU);
+        let uncollectedR = wasteGenR * (1 - pickR);
+        let burntUKg = uncollectedU * burnU;
+        let burntRKg = uncollectedR * burnR;
+        let totalBurntKg = burntUKg + burntRKg;
+
+        // Math: Emissions
+        let owbTons = totalBurntKg / 1000;
+
+        // Only append row if there is actually people or waste, to save CSV size (optional, but good practice)
+        if (cellPop > 0) {
+            csvContent += `${c.ncol},${c.nrow},${c.center_long.toFixed(4)},${c.center_lat.toFixed(4)},${cellPop.toFixed(2)},${popUrban.toFixed(2)},${popRural.toFixed(2)},${cellBuiltShare.toFixed(2)},${totalGenKg.toFixed(2)},${totalBurntKg.toFixed(2)},${owbTons.toFixed(4)}\n`;
+        }
+      }
+
+      // Trigger file download
+      window.downloadBlob(csvContent, 'owb_grid_emissions.csv', 'text/csv');
+      
+      // Reset button
+      downloadGridCsvBtn.textContent = "↓ Download 0.01° Grid CSV";
+      downloadGridCsvBtn.disabled = false;
+    }, 50);
+  });
+}
 init();

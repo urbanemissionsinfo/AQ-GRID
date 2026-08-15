@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Raster Viewer & OWB Calculator</title>
+  <title>Open Waste Burning Calculator</title>
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -28,8 +28,11 @@
     </div>
 
     <!-- Right: Calculation Panel (30%) -->
+    <!-- Right: Calculation Panel (35%) -->
     <div id="calc-panel">
       <h2>Waste & OWB Calculator</h2>
+
+      <button id="drawRectBtn" class="btn primary-btn" style="background-color: var(--accent); color: white; margin-bottom: 12px; width: 100%; padding: 10px; font-weight: 600; border-radius: var(--radius-md); border: none; cursor: pointer;">Draw Bounding Box on Map</button>
       
       <div class="status-badge-container">
         <span>AOI Mode: </span>
@@ -37,81 +40,90 @@
         <button id="btn-clear-box" class="btn-sm hidden">Clear Box</button>
       </div>
 
-      <!-- AOI Statistics Box -->
-      <div class="aoi-stats-group">
-        <h3>Bounding Box Statistics</h3>
-        <div class="stat-row">
-          <span>Area:</span>
-          <strong id="stat-area">-- km²</strong>
+      <!-- Compact AOI Overview -->
+      <div class="aoi-overview">
+        <div class="stat-item"><span>Area</span><strong id="stat-area">-- km²</strong></div>
+        <div class="stat-item"><span>Total Pop</span><strong id="stat-pop-total">0</strong></div>
+        <div class="stat-item"><span>Built Share</span><strong id="stat-built-share">0%</strong></div>
+      </div>
+
+      <!-- 2-Column Split: Urban vs Rural -->
+      <div class="sector-split">
+        
+        <!-- URBAN COLUMN -->
+        <div class="sector-col">
+          <div class="sector-header urban">Urban Sector</div>
+          <div class="sector-body">
+            <div class="sector-stat">
+              <span>Population</span>
+              <strong id="stat-pop-urban">0</strong>
+            </div>
+
+            <div class="input-stack">
+              <label>Waste Gen (kg/day) <input type="number" id="gen-urban" value="0.5" min="0" step="0.1"></label>
+              <label>Pickup Rate (%) <input type="number" id="pickup-urban" value="60" min="0" max="100"></label>
+              <label>Burn Rate (%) <input type="number" id="burn-urban" value="75" min="0" max="100"></label>
+            </div>
+
+            <div class="result-stack">
+              <div class="res-row"><span>Generated</span><strong id="res-gen-urban">0</strong></div>
+              <div class="res-row"><span>Picked Up</span><strong id="res-pickup-urban">0</strong></div>
+              <div class="res-row highlight"><span>OWB (t/d)</span><strong id="res-owb-urban">0</strong></div>
+            </div>
+          </div>
         </div>
-        <div class="stat-row">
-          <span>Urban Population:</span>
-          <strong id="stat-pop-urban">0</strong>
+
+        <!-- RURAL COLUMN -->
+        <div class="sector-col">
+          <div class="sector-header rural">Rural Sector</div>
+          <div class="sector-body">
+            <div class="sector-stat">
+              <span>Population</span>
+              <strong id="stat-pop-rural">0</strong>
+            </div>
+
+            <div class="input-stack">
+              <label>Waste Gen (kg/day) <input type="number" id="gen-rural" value="0.2" min="0" step="0.1"></label>
+              <label>Pickup Rate (%) <input type="number" id="pickup-rural" value="10" min="0" max="100"></label>
+              <label>Burn Rate (%) <input type="number" id="burn-rural" value="75" min="0" max="100"></label>
+            </div>
+
+            <div class="result-stack">
+              <div class="res-row"><span>Generated</span><strong id="res-gen-rural">0</strong></div>
+              <div class="res-row"><span>Picked Up</span><strong id="res-pickup-rural">0</strong></div>
+              <div class="res-row highlight"><span>OWB (t/d)</span><strong id="res-owb-rural">0</strong></div>
+            </div>
+          </div>
         </div>
-        <div class="stat-row">
-          <span>Rural Population:</span>
-          <strong id="stat-pop-rural">0</strong>
-        </div>
-        <div class="stat-row">
-          <span>Total Population:</span>
-          <strong id="stat-pop-total">0</strong>
-        </div>
-        <div class="stat-row">
-          <span>Mean Built-up Share:</span>
-          <strong id="stat-built-share">0%</strong>
-        </div>
+
       </div>
 
-      <!-- Inputs -->
-      <div class="input-group">
-        <h3>Waste Generation (kg/person/day)</h3>
-        <label>Urban (1-5): <input type="number" id="gen-urban" value="0.5" min="0" max="5" step="0.1"></label>
-        <label>Rural (1-5): <input type="number" id="gen-rural" value="0.2" min="0" max="5" step="0.1"></label>
-      </div>
-
-      <div class="input-group">
-        <h3>Pickup Rate (%)</h3>
-        <label>Urban: <input type="number" id="pickup-urban" value="60" min="0" max="100"></label>
-        <label>Rural: <input type="number" id="pickup-rural" value="10" min="0" max="100"></label>
-      </div>
-
-      <div class="input-group">
-        <h3>Open Burning Rate (%)</h3>
-        <label>Urban: <input type="number" id="burn-urban" value="75" min="0" max="100"></label>
-        <label>Rural: <input type="number" id="burn-rural" value="75" min="0" max="100"></label>
-      </div>
-
-      <div class="input-group">
-        <h3>Landfill Capacity (tons/day)</h3>
-        <label>Capacity: <input type="number" id="landfill-cap" value="0" min="0"></label>
-      </div>
-
-      <hr>
-
-      <!-- Results -->
-      <div class="results-group">
-        <h3>Waste Generated (tons/day)</h3>
-        <p>Urban: <span id="res-gen-urban">0</span></p>
-        <p>Rural: <span id="res-gen-rural">0</span></p>
-        <p><strong>Total: <span id="res-gen-total">0</span></strong></p>
-      </div>
-
-      <div class="results-group" id="pickup-container">
-        <h3>Waste Picked Up (tons/day)</h3>
+      <!-- Shared Constraints -->
+      <div class="constraint-box" id="pickup-container">
+        <label>
+          Landfill Capacity (tons/day): 
+          <input type="number" id="landfill-cap" value="0" min="0">
+        </label>
         <p id="landfill-warning" class="hidden warning-text"></p>
-        <p>Urban: <span id="res-pickup-urban">0</span></p>
-        <p>Rural: <span id="res-pickup-rural">0</span></p>
-        <p><strong>Total: <span id="res-pickup-total">0</span></strong></p>
       </div>
 
-      <div class="results-group">
-        <h3>Open Waste Burnt (OWB)</h3>
-        <p>Urban: <span id="res-owb-urban">0</span> tons/day</p>
-        <p>Rural: <span id="res-owb-rural">0</span> tons/day</p>
-        <p><strong>Total Daily: <span id="res-owb-daily">0</span> tons/day</strong></p>
-        <p><strong>Total Yearly: <span id="res-owb-yearly">0</span> tons/year</strong></p>
+      <!-- Final Aggregates -->
+      <div class="totals-box">
+        <h3>Total Daily Aggregates</h3>
+        <div class="totals-grid">
+          <div class="tot-item"><span>Generated (t/d)</span><strong id="res-gen-total">0</strong></div>
+          <div class="tot-item"><span>Picked Up (t/d)</span><strong id="res-pickup-total">0</strong></div>
+          <div class="tot-item tot-owb"><span>Total OWB (t/d)</span><strong id="res-owb-daily">0</strong></div>
+        </div>
+        <div class="yearly-owb" style="margin-bottom: 16px;">
+          Yearly OWB Estimate: <strong id="res-owb-yearly">0</strong> tons/year
+        </div>
+        
+        <!-- NEW: Download CSV Button -->
+        <button id="download-grid-csv" class="btn" style="width: 100%; background: #ffffff; color: var(--accent); border: none; padding: 10px; font-weight: 700; border-radius: var(--radius-sm); cursor: pointer;">
+          ↓ Download 0.01° Grid CSV
+        </button>
       </div>
-
     </div>
   </div>
 
