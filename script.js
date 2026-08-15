@@ -510,9 +510,9 @@ function runCalculations() {
   document.getElementById('res-gen-rural').textContent = genRuralTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
   document.getElementById('res-gen-total').textContent = genTotal.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-  document.getElementById('res-pickup-urban').textContent = pickUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-pickup-rural').textContent = pickRuralTons.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  document.getElementById('res-pickup-total').textContent = pickTotal.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  document.getElementById('res-pickup-urban').textContent = pickUrbanTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-pickup-rural').textContent = pickRuralTons.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  document.getElementById('res-pickup-total').textContent = pickTotal.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   document.getElementById('res-owb-urban').textContent = owbUrban.toLocaleString(undefined, { maximumFractionDigits: 0 });
   document.getElementById('res-owb-rural').textContent = owbRural.toLocaleString(undefined, { maximumFractionDigits: 0 });
